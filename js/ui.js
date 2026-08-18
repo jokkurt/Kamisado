@@ -1,12 +1,17 @@
 /* ============================================================
    Kamisado — ui.js
-   Rendering + interaction. SVG pagoda towers, board tiles,
-   markers, animations, sound, DE/EN text, turn flow.
+   Rendering + interaction. 3D sprite towers (colorized per
+   square color), board tiles, markers, animations, sound,
+   DE/EN text, turn flow.
    ============================================================ */
 (function (global) {
   "use strict";
 
   var B = global.KamisadoBoard;
+  if (!B && typeof require === "function") {
+    try { B = require("./board.js"); } catch (e) { B = require("./board"); }
+  }
+  if (!B) throw new Error("KamisadoBoard not loaded — load board.js before ui.js");
   var G = global.Kamisado;
   var AI = global.KamisadoAI;
 
@@ -37,7 +42,10 @@
       start: "Start Game", rules: "Rules", soundOn: "Sound: On", soundOff: "Sound: Off",
       reformTitle: "Winning side — set the line",
       movesUp: "▲ moves up", movesDown: "▼ moves down",
-      credit: "Original game by Huch & friends · This is a fan web implementation"
+      credit: "Original game by Huch & friends · This is a fan web implementation",
+      requiredColor: "Required Color", lastMove: "Last Move", score: "Score",
+      skipped: "skipped",
+      colorNames: { brown: "Brown", green: "Green", red: "Red", yellow: "Yellow", pink: "Pink", purple: "Purple", blue: "Blue", orange: "Orange" }
     },
     de: {
       yourTurn: "Dein Zug", cpuTurn: "CPU überlegt…",
@@ -61,7 +69,10 @@
       start: "Spiel starten", rules: "Regeln", soundOn: "Ton: An", soundOff: "Ton: Aus",
       reformTitle: "Gewinnende Seite — Linie setzen",
       movesUp: "▲ nach oben", movesDown: "▼ nach unten",
-      credit: "Originalspiel von Huch & friends · Fan-Web-Implementierung"
+      credit: "Originalspiel von Huch & friends · Fan-Web-Implementierung",
+      requiredColor: "Zu spielende Farbe", lastMove: "Letzter Zug", score: "Punktestand",
+      skipped: "ausgesetzt",
+      colorNames: { brown: "Braun", green: "Grün", red: "Rot", yellow: "Gelb", pink: "Rosa", purple: "Violett", blue: "Blau", orange: "Orange" }
     }
   };
   var lang = "de";
@@ -69,6 +80,14 @@
     var s = (LANG[lang] && LANG[lang][key]) || (LANG.en[key]) || key;
     if (vars) Object.keys(vars).forEach(function (k) { s = s.replace("{" + k + "}", vars[k]); });
     return s;
+  }
+  function colorName(c) {
+    var cn = (LANG[lang] && LANG[lang].colorNames) || LANG.en.colorNames;
+    return cn[c] || c;
+  }
+  // Square coordinate like "A4": file A-H = column, number = 8 - row.
+  function squareName(r, c) {
+    return String.fromCharCode(65 + c) + (8 - r);
   }
 
   // ---------------- sound (WebAudio) ----------------
@@ -108,58 +127,32 @@
     towerEls: {},         // key "owner:color" -> el
     busy: false,
     firstMove: true,
-    gen: 0
+    gen: 0,
+    lastPlayer: null
   };
 
-  // ---------------- SVG pagoda tower ----------------
-  var _uid = 0;
-  function towerSVG(color, owner, rank) {
-    _uid++;
-    var id = "tg" + _uid;
-    var bodyHi = owner === "W" ? "#ffffff" : "#4a4356";
-    var bodyLo = owner === "W" ? "#c9c2b4" : "#161220";
-    var roofHi = owner === "W" ? "#f4f1ea" : "#3a3542";
-    var roofLo = owner === "W" ? "#a99f8d" : "#100d18";
-    var topC = B.COLOR_HEX[color], topL = B.COLOR_LIGHT[color], topD = B.COLOR_DARK[color];
-    var roof = function (y, w) {
-      var l = 50 - w / 2, r = 50 + w / 2;
-      return '<path d="M' + l + ',' + y + ' Q50,' + (y - 13) + ' ' + r + ',' + y +
-        ' L' + (r - 5) + ',' + (y + 7) + ' Q50,' + (y - 3) + ' ' + (l + 5) + ',' + (y + 7) + ' Z" ' +
-        'fill="url(#' + id + 'r)" stroke="rgba(0,0,0,.35)" stroke-width="1"/>';
-    };
-    var svg =
-      '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
-        '<defs>' +
-          '<linearGradient id="' + id + 'b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + bodyHi + '"/><stop offset="1" stop-color="' + bodyLo + '"/></linearGradient>' +
-          '<linearGradient id="' + id + 'r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + roofHi + '"/><stop offset="1" stop-color="' + roofLo + '"/></linearGradient>' +
-          '<radialGradient id="' + id + 't" cx="0.35" cy="0.28" r="0.85"><stop offset="0" stop-color="' + topL + '"/><stop offset="0.55" stop-color="' + topC + '"/><stop offset="1" stop-color="' + topD + '"/></radialGradient>' +
-        '</defs>' +
-        // shadow
-        '<ellipse cx="50" cy="92" rx="33" ry="6.5" fill="rgba(0,0,0,.42)"/>' +
-        // base platform
-        '<path d="M22,86 L78,86 L74,75 L26,75 Z" fill="url(#' + id + 'r)" stroke="rgba(0,0,0,.4)" stroke-width="1"/>' +
-        // body 1
-        '<rect x="35" y="60" width="30" height="15" rx="2.5" fill="url(#' + id + 'b)"/>' +
-        // roof 1
-        roof(58, 72) +
-        // body 2
-        '<rect x="40" y="43" width="20" height="10" rx="2" fill="url(#' + id + 'b)"/>' +
-        // roof 2
-        roof(41, 52) +
-        // body 3
-        '<rect x="44" y="30" width="12" height="7" rx="2" fill="url(#' + id + 'b)"/>' +
-        // roof 3
-        roof(28, 36) +
-        // colored top disc + spire
-        '<circle cx="50" cy="16" r="13.5" fill="url(#' + id + 't)" stroke="rgba(0,0,0,.4)" stroke-width="1"/>' +
-        '<path d="M50,10 L56,16 L50,22 L44,16 Z" fill="rgba(255,255,255,.85)"/>' +
-        '<line x1="50" y1="16" x2="50" y2="3" stroke="var(--gold,#e8b45a)" stroke-width="2"/>' +
-        '<circle cx="50" cy="3" r="2.6" fill="#ffe9bd"/>' +
-      '</svg>';
-    return svg;
-  }
+  // ---------------- tower sprite ----------------
+   // One sprite per color x side: sprites/tower_<color>_<white|black>.png.
+   // The 3D body (cream for White, charcoal for Black) is shared by the
+   // 16 renders; the gem + base ring are baked to the EXACT board color at
+   // sprite-generation time (scripts/gen_sprites.js), so a tower's accent
+   // always matches the square it stands on — no browser-side hue math.
+   // (hue-rotate was tried first and drifted badly on large rotations.)
+   function towerSpriteSrc(color, owner) {
+     return "sprites/tower_" + color + "_" + (owner === "W" ? "white" : "black") + ".png";
+   }
 
-  // ---------------- board rendering ----------------
+   function towerMarkup(color, owner) {
+     // contact shadow lies flat on the board plane; the .bill stands
+     // upright (inverse-rotated against the board tilt, see style.css)
+     return '<div class="contact-shadow"></div>' +
+       '<div class="bill"><div class="sumo-halo"></div>' +
+       '<img class="sprite" src="' + towerSpriteSrc(color, owner) +
+       '" alt="" draggable="false">' +
+       '</div><div class="rank-rings"></div>';
+   }
+
+   // ---------------- board rendering ----------------
   function el(tag, cls, html) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -169,6 +162,26 @@
   function cellPos(r, c) {
     return { left: (c + 0.5) * CELL + "%", top: (r + 0.5) * CELL + "%" };
   }
+  // Desaturated tile fill (15-20% less saturation, slightly darker) so the
+  // towers read clearly against the board.
+  var TILE = {};
+  (function () {
+    function mix(h, t, p) {
+      h = h.replace("#", "");
+      t = t.replace("#", "");
+      var r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+      var tr = parseInt(t.substr(0, 2), 16), tg = parseInt(t.substr(2, 2), 16), tb = parseInt(t.substr(4, 2), 16);
+      var f = function (v, tv) { return Math.round(v + (tv - v) * p); };
+      return "rgb(" + f(r, tr) + "," + f(g, tg) + "," + f(b, tb) + ")";
+    }
+    B.COLORS.forEach(function (c) {
+      TILE[c] = {
+        fill: mix(B.COLOR_HEX[c], "#2a2438", 0.18),
+        hi: mix(B.COLOR_LIGHT[c], "#4a4360", 0.30),
+        lo: mix(B.COLOR_DARK[c], "#141020", 0.35)
+      };
+    });
+  })();
 
   function renderBoard() {
     var svg = document.getElementById("board-svg");
@@ -179,15 +192,23 @@
         var color = s.squares[r][c];
         var x = c * CELL, y = r * CELL;
         var isHome = (r === 0 || r === 7);
-        out += '<rect x="' + x + '" y="' + y + '" width="' + CELL + '" height="' + CELL + '" ' +
-          'fill="' + B.COLOR_HEX[color] + '"/>';
-        // subtle top gloss
-        out += '<rect x="' + x + '" y="' + y + '" width="' + CELL + '" height="' + (CELL * 0.5) + '" fill="rgba(255,255,255,.10)"/>';
+        out += '<g class="tile' + (isHome ? " home" : "") + '">';
+        out += '<rect class="tile-fill" x="' + x + '" y="' + y + '" width="' + CELL + '" height="' + CELL +
+          '" fill="' + TILE[color].fill + '"/>';
+        // bevel: light top-left edge, dark bottom-right edge
+        out += '<path class="tile-bevel-hi" d="M' + x + ',' + (y + CELL) + ' L' + x + ',' + y + ' L' + (x + CELL) + ',' + y +
+          ' L' + (x + CELL) + ',' + (y + 0.9) + ' L' + (x + 0.9) + ',' + (y + 0.9) + ' L' + (x + 0.9) + ',' + (y + CELL) + ' Z" ' +
+          'fill="' + TILE[color].hi + '"/>';
+        out += '<path class="tile-bevel-lo" d="M' + (x + CELL) + ',' + y + ' L' + (x + CELL) + ',' + (y + CELL) + ' L' + x + ',' + (y + CELL) +
+          ' L' + x + ',' + (y + CELL - 0.9) + ' L' + (x + CELL - 0.9) + ',' + (y + CELL - 0.9) + ' L' + (x + CELL - 0.9) + ',' + y + ' Z" ' +
+          'fill="' + TILE[color].lo + '"/>';
         // grid line
-        out += '<rect x="' + x + '" y="' + y + '" width="' + CELL + '" height="' + CELL + '" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="0.35"/>';
+        out += '<rect x="' + x + '" y="' + y + '" width="' + CELL + '" height="' + CELL +
+          '" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="0.4"/>';
         if (isHome) {
-          out += '<rect x="' + x + '" y="' + (r === 0 ? 0 : y + CELL - 2.2) + '" width="' + CELL + '" height="2.2" fill="rgba(255,255,255,.25)"/>';
+          out += '<rect x="' + x + '" y="' + (r === 0 ? 0 : y + CELL - 2.4) + '" width="' + CELL + '" height="2.4" fill="rgba(255,255,255,.22)"/>';
         }
+        out += '</g>';
       }
     }
     svg.innerHTML = out;
@@ -206,25 +227,27 @@
       if (!desired[k]) { layer.removeChild(ui.towerEls[k]); delete ui.towerEls[k]; }
     });
     var towers = G.allTowers(s);
-    // sort by rank so higher sumos render on top
-    towers.sort(function (a, b) { return a.rank - b.rank; });
+    // sort by row so pieces closer to the viewer (larger row) paint on top
+    towers.sort(function (a, b) { return a.r - b.r || a.c - b.c; });
     towers.forEach(function (t) {
       var key = t.owner + ":" + t.color;
       var pos = cellPos(t.r, t.c);
       var existing = ui.towerEls[key];
       if (!existing) {
         existing = el("div", "tower r" + t.rank);
-        existing.innerHTML = towerSVG(t.color, t.owner, t.rank) + '<div class="rank-rings"></div>';
+        existing.innerHTML = towerMarkup(t.color, t.owner);
         existing.dataset.key = key;
         existing.addEventListener("click", function () { onTowerClick(t.owner, t.color); });
         layer.appendChild(existing);
         ui.towerEls[key] = existing;
         existing.style.left = pos.left; existing.style.top = pos.top;
+        existing.style.zIndex = String(t.r + 1); // row painter's order
         if (!animate) { existing.style.transition = "none"; existing.offsetHeight; existing.style.transition = ""; }
       } else {
         existing.className = "tower r" + t.rank;
         if (!animate) existing.style.transition = "none";
         existing.style.left = pos.left; existing.style.top = pos.top;
+        existing.style.zIndex = String(t.r + 1);
         if (!animate) { existing.offsetHeight; existing.style.transition = ""; }
       }
       // update classes
@@ -237,20 +260,63 @@
   function clearMarkers() {
     var fx = document.getElementById("fx");
     fx.innerHTML = "";
+    var sel = document.getElementById("fx-sel");
+    if (sel) sel.innerHTML = "";
+  }
+
+  // Highlight the square the active (forced/selected) tower stands on.
+  function showSelectionSquare(r, c) {
+    var sel = document.getElementById("fx-sel");
+    sel.innerHTML = "";
+    var sq = el("div", "sq-highlight");
+    sq.style.left = (c + 0.5) * CELL + "%";
+    sq.style.top = (r + 0.5) * CELL + "%";
+    sel.appendChild(sq);
+  }
+
+  // Path preview for a slide destination: the intermediate squares of the ray.
+  function pathCells(fromR, fromC, toR, toC) {
+    var out = [];
+    var dc = Math.sign(toC - fromC), dr = Math.sign(toR - fromR);
+    var rr = fromR, cc = fromC;
+    while (rr !== toR || cc !== toC) {
+      rr += dr; cc += dc;
+      if (rr !== toR || cc !== toC) out.push([rr, cc]);
+    }
+    return out;
   }
 
   function showMarkers(moves, owner, color) {
     clearMarkers();
     var fx = document.getElementById("fx");
+    var s = ui.state;
+    var from = s ? s.towers[owner][color] : null;
     moves.forEach(function (m) {
       var pos = cellPos(m.toR, m.toC);
-      var mk = el("div", "marker" + (m.pushCount > 0 ? " push" : ""), '<div class="dot"></div>');
+      var mk = el("div", "marker" + (m.pushCount > 0 ? " push" : "") + (m.toR === G.oppHome(owner) ? " reach" : ""),
+        '<div class="dot"></div>');
       mk.style.left = pos.left; mk.style.top = pos.top;
       mk.addEventListener("click", function () {
         onMarkerClick({ owner: owner, color: color, toR: m.toR, toC: m.toC, pushCount: m.pushCount });
       });
+      // hover: highlight destination square + path cells of the slide
+      mk.addEventListener("mouseenter", function () {
+        mk.classList.add("hover");
+        var cells = (m.pushCount > 0 || !from) ? [] : pathCells(from.r, from.c, m.toR, m.toC);
+        cells.forEach(function (p) {
+          var pv = el("div", "path-cell");
+          pv.style.left = (p[1] + 0.5) * CELL + "%";
+          pv.style.top = (p[0] + 0.5) * CELL + "%";
+          fx.appendChild(pv);
+        });
+      });
+      mk.addEventListener("mouseleave", function () {
+        mk.classList.remove("hover");
+        fx.querySelectorAll(".path-cell").forEach(function (p) { p.remove(); });
+      });
       fx.appendChild(mk);
     });
+    if (from) showSelectionSquare(from.r, from.c);
   }
 
   // ---------------- panels ----------------
@@ -291,6 +357,50 @@
     // round
     document.getElementById("round-num").textContent = t("round") + " " + s.round;
     document.getElementById("target-num").textContent = t("firstTo", { n: s.target });
+    // score card
+    document.getElementById("score-w").textContent = s.points.W;
+    document.getElementById("score-b").textContent = s.points.B;
+    // current-player coin + turn-change flash
+    var coin = document.getElementById("turn-coin");
+    if (coin) coin.textContent = s.player === "W" ? "⚪" : "⚫";
+    if (ui.lastPlayer && ui.lastPlayer !== s.player && s.phase === "playing") {
+      var tb = document.getElementById("turn-box");
+      tb.classList.remove("turn-flash");
+      void tb.offsetWidth; // restart animation
+      tb.classList.add("turn-flash");
+    }
+    ui.lastPlayer = s.player;
+    // required color (the color the next tower MUST match)
+    var req = document.getElementById("required");
+    if (req) {
+      if (s.phase === "playing" && s.forcedColor) {
+        req.hidden = false;
+        document.getElementById("req-badge").style.background = B.COLOR_HEX[s.forcedColor];
+        document.getElementById("req-badge").style.borderColor = B.COLOR_DARK[s.forcedColor];
+        document.getElementById("req-name").textContent = colorName(s.forcedColor);
+        document.getElementById("req-name").style.color = B.COLOR_LIGHT[s.forcedColor];
+      } else {
+        req.hidden = true;
+      }
+    }
+    // last move card
+    var lmBox = document.getElementById("lastmove-box");
+    if (lmBox) {
+      var lm = s.lastMove;
+      if (lm) {
+        lmBox.hidden = false;
+        var txt = playerMeta(lm.owner) + ": ";
+        if (lm.pass) {
+          txt += colorName(lm.color) + " — " + t("skipped");
+        } else {
+          txt += '<span style="color:' + B.COLOR_LIGHT[lm.color] + '">' + colorName(lm.color) + "</span> → " +
+            squareName(lm.toR, lm.toC) + (lm.pushCount > 0 ? " (×" + lm.pushCount + ")" : "");
+        }
+        document.getElementById("lm-text").innerHTML = txt;
+      } else {
+        lmBox.hidden = true;
+      }
+    }
 
     // ---- round-end: show result + the left/right choice in THIS panel,
     //      so the board stays fully visible for the winner to judge ----
@@ -670,6 +780,9 @@
     if (sideBtns[1]) sideBtns[1].textContent = "⚫ " + d.black;
     var rt = document.querySelector("#reform .reform-title");
     if (rt) rt.textContent = d.reformTitle;
+    if ($("req-label")) $("req-label").textContent = d.requiredColor;
+    if ($("lm-label")) $("lm-label").textContent = d.lastMove;
+    if ($("score-label")) $("score-label").textContent = d.score;
     var rl = document.querySelector('#reform .reform-btns button[data-dir="L"]');
     var rr = document.querySelector('#reform .reform-btns button[data-dir="R"]');
     if (rl) rl.textContent = "◀ " + d.setLineL;

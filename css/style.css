@@ -21,6 +21,8 @@
   --accent-w: #f4f1ea;
   --accent-b: #3a3542;
   --sumo-glow: #ffd76a;
+  --board-tilt: 24deg;
+  --board-perspective: 1600px;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,20 +177,21 @@ html, body {
 
 .player-bar {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px;
+  padding: 7px 12px;
   border-radius: 14px;
   background: rgba(255,255,255,.045);
   border: 1px solid rgba(255,255,255,.09);
-  min-height: 64px;
+  min-height: 48px;
+  transition: border-color .3s, box-shadow .3s, background .3s;
 }
 .player-bar .avatar {
-  width: 42px; height: 42px; border-radius: 50%;
+  width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px;
+  font-size: 18px;
   background: rgba(0,0,0,.3);
   border: 2px solid rgba(255,255,255,.15);
 }
-.player-bar .pname { font-weight: 800; font-size: 16px; }
+.player-bar .pname { font-weight: 800; font-size: 15px; }
 .player-bar .pmeta { font-size: 12px; color: var(--ink-dim); }
 .player-bar .points {
   margin-left: auto;
@@ -217,18 +220,48 @@ html, body {
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .7; } }
 
 /* ---------------- Board ---------------- */
-.board-area { display: flex; align-items: center; justify-content: center; min-height: 0; }
+/* The frame sits on a 3D plane: perspective on the area, rotateX on the
+   frame (top edge recedes), so it reads as a slightly tilted board.
+   Towers counter-rotate (billboard) so the pieces stand upright. */
+.board-area {
+  display: flex; align-items: center; justify-content: center; min-height: 0;
+  perspective: var(--board-perspective);
+  perspective-origin: 50% 22%;
+  padding-bottom: 26px; /* room for the tilted frame's front edge */
+}
 .board-frame {
   position: relative;
-  width: min(100%, 92vh - 150px, 680px);
-  padding: 14px 14px 10px;
+  width: min(100%, 94vh - 105px, 700px);
+  padding: 12px 12px 9px;
   border-radius: 20px;
   background:
     linear-gradient(155deg, var(--frame-hi), var(--frame-lo) 70%);
   box-shadow:
-    0 30px 70px rgba(0,0,0,.6),
+    0 34px 74px rgba(0,0,0,.65),
     inset 0 2px 2px rgba(255,255,255,.14),
     inset 0 -4px 10px rgba(0,0,0,.6);
+  transform: rotateX(var(--board-tilt));
+  transform-origin: 50% 30%;
+}
+/* the slab side visible under the tilted frame */
+.board-frame-side {
+  position: absolute; left: 2%; right: 2%; top: 99%;
+  height: 22px; z-index: -1;
+  transform: rotateX(-90deg);
+  transform-origin: top center;
+  background: linear-gradient(180deg, #33200f 0%, #241608 45%, #150c05 100%);
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 26px 44px rgba(0,0,0,.5);
+}
+/* corner rivets */
+.board-frame::after {
+  content: ""; position: absolute; inset: 0;
+  border-radius: 20px; pointer-events: none;
+  background:
+    radial-gradient(circle at 13px 13px, rgba(232,180,90,.95) 0 2.4px, rgba(0,0,0,.55) 2.9px, transparent 3.6px),
+    radial-gradient(circle at calc(100% - 13px) 13px, rgba(232,180,90,.95) 0 2.4px, rgba(0,0,0,.55) 2.9px, transparent 3.6px),
+    radial-gradient(circle at 13px calc(100% - 13px), rgba(232,180,90,.95) 0 2.4px, rgba(0,0,0,.55) 2.9px, transparent 3.6px),
+    radial-gradient(circle at calc(100% - 13px) calc(100% - 13px), rgba(232,180,90,.95) 0 2.4px, rgba(0,0,0,.55) 2.9px, transparent 3.6px);
 }
 .board-frame::before {
   content: ""; position: absolute; inset: 8px;
@@ -252,14 +285,45 @@ html, body {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 10px;
-  overflow: hidden;
   box-shadow: inset 0 0 30px rgba(0,0,0,.5);
 }
 #board-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#fx-sel { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 #towers { position: absolute; inset: 0; }
 #fx { position: absolute; inset: 0; pointer-events: none; }
 
-/* Towers */
+/* Selected square: thin animated gold ring around the active tower's cell */
+.sq-highlight {
+  position: absolute;
+  width: 12.5%; height: 12.5%;
+  margin: -6.25% 0 0 -6.25%;
+  border: 2.5px solid rgba(255, 222, 130, .95);
+  border-radius: 14%;
+  box-shadow: 0 0 10px rgba(255, 215, 106, .45), inset 0 0 8px rgba(255, 215, 106, .25);
+  animation: selring 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes selring {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 215, 106, .35), inset 0 0 6px rgba(255, 215, 106, .2); }
+  50% { box-shadow: 0 0 16px rgba(255, 215, 106, .65), inset 0 0 10px rgba(255, 215, 106, .35); }
+}
+
+/* Path preview cells (hover over a destination) */
+.path-cell {
+  position: absolute;
+  width: 12.5%; height: 12.5%;
+  margin: -6.25% 0 0 -6.25%;
+  background: rgba(255, 236, 190, .13);
+  border: 1.5px dashed rgba(255, 236, 190, .4);
+  border-radius: 10%;
+  pointer-events: none;
+  animation: fadein .15s;
+}
+
+/* Towers: 3D sprite pieces. The .tower anchor sits on the tilted board
+   plane (contact shadow + rank rings lie flat on it); .bill counter-
+   rotates the piece upright toward the viewer (billboard), so towers
+   always read as standing on the board. */
 .tower {
   position: absolute;
   width: 12.5%; height: 12.5%;
@@ -270,14 +334,79 @@ html, body {
   cursor: default;
   z-index: 10;
 }
-.tower.moving { transition: transform .45s cubic-bezier(.3, .9, .35, 1.05); z-index: 30; }
-.tower svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
-/* Sumo towers are physically bigger */
-.tower.r1 svg { transform: scale(1.14); }
-.tower.r2 svg { transform: scale(1.22); }
-.tower.r3 svg { transform: scale(1.30); }
-.tower.r4 svg { transform: scale(1.38); }
-.tower .rank-rings { position: absolute; inset: 12%; border-radius: 50%; pointer-events: none; }
+.tower.moving { transition: transform .45s cubic-bezier(.3, .9, .35, 1.05); z-index: 50 !important; }
+.tower .contact-shadow {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 96%; height: 30%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.45) 0%, rgba(0,0,0,.28) 45%, rgba(0,0,0,0) 72%);
+  pointer-events: none;
+  z-index: 1;
+}
+.tower .bill {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 108%; height: 210%;
+  transform: translate(-50%, -97%) rotateX(calc(-1 * var(--board-tilt)));
+  transform-origin: 50% 100%;
+  pointer-events: none; /* the .tower cell (the piece's square) is the click target;
+                           the tall billboard must not cover destination markers */
+  z-index: 2;
+}
+.tower .sprite {
+  position: absolute;
+  left: 50%; bottom: 1%;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  /* the piece's base disc spans 84% of its cell, so towers stay inside
+     their square (bill width 108% x sprite 84% ~= one cell) */
+  width: 84%;
+  height: auto;
+  display: block;
+  user-select: none;
+  /* the gem + base ring are baked to the square's color in the sprite
+     itself (scripts/gen_sprites.js) — no hue-rotate needed */
+  filter: drop-shadow(0 4px 5px rgba(0,0,0,.4));
+}
+/* Sumo towers are physically bigger (grow from the base). Scaled from the
+   84% base disc: r1 ~86% ... r4 ~101% of the cell, so even the biggest
+   sumo fits its square. */
+.tower.r1 .sprite { transform: translateX(-50%) scale(1.02); }
+.tower.r2 .sprite { transform: translateX(-50%) scale(1.09); }
+.tower.r3 .sprite { transform: translateX(-50%) scale(1.15); }
+.tower.r4 .sprite { transform: translateX(-50%) scale(1.21); }
+/* soft golden halo behind sumo towers (billboarded with the piece) */
+.tower .sumo-halo {
+  position: absolute;
+  left: 50%; bottom: -4%;
+  width: 165%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,215,106,.55) 0%, rgba(255,215,106,.25) 42%, rgba(255,215,106,0) 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.tower.r1 .sumo-halo { opacity: .8; animation: halo 1.8s ease-in-out infinite; }
+.tower.r2 .sumo-halo { opacity: .95; width: 192%; animation: halo 1.4s ease-in-out infinite; }
+.tower.r3 .sumo-halo { opacity: 1; width: 214%; animation: halo 1.1s ease-in-out infinite; }
+.tower.r4 .sumo-halo { opacity: 1; width: 234%; animation: halo .8s ease-in-out infinite; }
+@keyframes halo {
+  0%,100% { transform: translateX(-50%) scale(1); filter: brightness(1); }
+  50% { transform: translateX(-50%) scale(1.06); filter: brightness(1.25); }
+}
+/* rank rings: flat on the board around the base (ellipse = tilted circle) */
+.tower .rank-rings {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 132%; height: 36%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+}
 .tower.r1 .rank-rings { box-shadow: 0 0 0 2px rgba(255,215,106,.9), 0 0 16px 3px rgba(255,215,106,.5); animation: glow 1.8s infinite; }
 .tower.r2 .rank-rings { box-shadow: 0 0 0 3px rgba(255,215,106,1), 0 0 22px 5px rgba(255,215,106,.7); animation: glow 1.4s infinite; }
 .tower.r3 .rank-rings { box-shadow: 0 0 0 4px #fff, 0 0 0 7px rgba(255,215,106,1), 0 0 28px 7px rgba(255,215,106,.8); animation: glow 1.1s infinite; }
@@ -285,13 +414,13 @@ html, body {
 @keyframes glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
 
 .tower.selectable { cursor: pointer; }
-.tower.selectable svg { filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)) drop-shadow(0 0 8px rgba(255,255,255,.25)); }
+.tower.selectable .sprite { filter: drop-shadow(0 6px 6px rgba(0,0,0,.55)) drop-shadow(0 0 8px rgba(255,255,255,.3)); }
 .tower.forced {
   cursor: pointer;
   animation: forcedBob 1.3s ease-in-out infinite;
 }
-.tower.forced svg { filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)) drop-shadow(0 0 12px var(--sumo-glow)); }
-@keyframes forcedBob { 0%,100% { transform: translate(var(--dx,0), var(--dy,0)) scale(1); } 50% { transform: translate(var(--dx,0), var(--dy,0)) scale(1.12); } }
+.tower.forced .sprite { filter: drop-shadow(0 6px 6px rgba(0,0,0,.55)) drop-shadow(0 0 12px var(--sumo-glow)); }
+@keyframes forcedBob { 0%,100% { transform: translate(var(--dx,0), var(--dy,0)); } 50% { transform: translate(var(--dx,0), var(--dy,0)) scale(1.06); } }
 
 /* FX: destination markers */
 .marker {
@@ -301,13 +430,21 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   pointer-events: auto; cursor: pointer;
   z-index: 5;
+  border-radius: 12%;
+  transition: background .12s;
 }
+.marker:hover { background: rgba(255, 244, 214, .10); }
 .marker .dot {
   width: 34%; height: 34%; border-radius: 50%;
   border: 3px solid rgba(255, 244, 214, .85);
   background: rgba(255, 244, 214, .18);
   box-shadow: 0 0 12px rgba(255, 244, 214, .5), inset 0 0 8px rgba(255,244,214,.35);
   animation: dotpulse 1.3s ease-in-out infinite;
+}
+.marker.reach .dot {
+  width: 52%; height: 52%;
+  border-width: 4px;
+  box-shadow: 0 0 18px rgba(255, 215, 106, .9), inset 0 0 10px rgba(255,215,106,.5);
 }
 .marker.push .dot {
   border-color: var(--sumo-glow);
@@ -338,15 +475,59 @@ html, body {
   background: rgba(0,0,0,.28);
   border: 1px solid rgba(255,255,255,.08);
 }
+.turn-box.turn-flash { animation: turnflash .5s ease; }
+@keyframes turnflash {
+  0% { background: rgba(232,180,90,.30); border-color: rgba(232,180,90,.6); }
+  100% { background: rgba(0,0,0,.28); border-color: rgba(255,255,255,.08); }
+}
+.turn-row { display: flex; align-items: center; gap: 10px; text-align: left; }
+.turn-coin {
+  font-size: 24px; line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255,255,255,.35));
+}
 .turn-title { font-size: 18px; font-weight: 800; }
 .turn-sub { font-size: 13px; color: var(--ink-dim); margin-top: 4px; min-height: 16px; }
+
+/* required color — the most visible mechanic indicator */
+.required {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.1);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.req-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-dim); font-weight: 700;
+}
+.req-badge {
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 2px solid rgba(255,255,255,.25);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,.35), inset 0 -3px 5px rgba(0,0,0,.4), 0 0 12px rgba(0,0,0,.3);
+  animation: reqpop .3s cubic-bezier(.3,1.4,.4,1);
+}
+@keyframes reqpop { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.req-name { font-size: 17px; font-weight: 800; letter-spacing: .02em; }
+
+.card {
+  padding: 10px 12px; border-radius: 12px;
+  background: rgba(0,0,0,.2);
+  border: 1px solid rgba(255,255,255,.07);
+}
+.lastmove-box .lm-label, .score-box .score-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-dim); font-weight: 700; margin-bottom: 4px;
+}
+.lm-text { font-size: 14px; font-weight: 700; }
+.score-box { text-align: center; }
+.score-row { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 20px; font-weight: 800; }
+.score-side b { color: var(--gold); font-size: 22px; }
+.score-sep { color: var(--ink-dim); font-size: 16px; }
 .tower-chip {
   display: inline-block; width: 20px; height: 20px; border-radius: 5px;
   vertical-align: -5px; margin: 0 3px;
   box-shadow: inset 0 1px 2px rgba(255,255,255,.4), inset 0 -2px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.3);
 }
 
-.round-box { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; }
+.round-box { display: flex; justify-content: space-between; align-items: baseline; }
 .round-num { font-weight: 800; font-size: 16px; }
 .target-num { font-size: 13px; color: var(--ink-dim); }
 
@@ -452,7 +633,7 @@ html, body {
     min-height: 0;
   }
   .board-frame { width: min(100%, 92vw); }
-  .player-bar { min-height: 54px; padding: 8px 10px; }
+  .player-bar { min-height: 44px; padding: 6px 10px; }
   .player-bar .points { font-size: 16px; }
 }
 @media (max-width: 520px) {

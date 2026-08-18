@@ -78,9 +78,11 @@
 
         <div class="board-area">
           <div class="board-frame">
+            <div class="board-frame-side"></div>
             <div class="board-label top" id="label-top">Black</div>
             <div id="board" class="board">
               <svg id="board-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+              <div id="fx-sel" class="fx-sel"></div>
               <div id="towers" class="towers"></div>
               <div id="fx" class="fx"></div>
             </div>
@@ -95,13 +97,37 @@
           <div class="panel-brand">KAMISADO</div>
 
           <div class="turn-box" id="turn-box">
-            <div class="turn-title" id="turn-title">Your turn</div>
-            <div class="turn-sub" id="turn-sub">Choose a tower</div>
+            <div class="turn-row">
+              <span class="turn-coin" id="turn-coin">⚪</span>
+              <div>
+                <div class="turn-title" id="turn-title">Your turn</div>
+                <div class="turn-sub" id="turn-sub">Choose a tower</div>
+              </div>
+            </div>
+            <div class="required" id="required" hidden>
+              <span class="req-label" id="req-label">Required Color</span>
+              <span class="req-badge" id="req-badge"></span>
+              <span class="req-name" id="req-name"></span>
+            </div>
           </div>
 
-          <div class="round-box">
+          <div class="round-box card">
             <div class="round-num" id="round-num">Round 1</div>
             <div class="target-num" id="target-num">First to 3</div>
+          </div>
+
+          <div class="lastmove-box card" id="lastmove-box" hidden>
+            <div class="lm-label" id="lm-label">Last Move</div>
+            <div class="lm-text" id="lm-text"></div>
+          </div>
+
+          <div class="score-box card" id="score-box">
+            <div class="score-label" id="score-label">Score</div>
+            <div class="score-row">
+              <span class="score-side w">⚪ <b id="score-w">0</b></span>
+              <span class="score-sep">:</span>
+              <span class="score-side b"><b id="score-b">0</b> ⚫</span>
+            </div>
           </div>
 
           <div class="hint" id="hint"></div>
